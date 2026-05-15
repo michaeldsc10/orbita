@@ -11,7 +11,9 @@ out/
 .env.*.local
 
 # firebase
-*.json
+firebase-debug.json
+.firebase/
+serviceAccountKey.json
 
 # misc
 .DS_Store
