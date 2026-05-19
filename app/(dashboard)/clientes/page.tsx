@@ -1,7 +1,7 @@
 // app/(dashboard)/clientes/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import {
   collection,
   getDocs,
@@ -392,36 +392,40 @@ function CardSkeleton() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function ClientesPage() {
+// Componente isolado só pra ler searchParams — obrigatório para Suspense boundary
+function SearchParamsReader({ onToast }: { onToast: (t: ToastData) => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const connected = searchParams.get("connected");
+    const error = searchParams.get("error");
+
+    if (connected === "1") {
+      onToast({ type: "success", message: "Conta conectada com sucesso!" });
+    } else if (error === "oauth_cancelled") {
+      onToast({ type: "error", message: "Conexão cancelada pelo usuário." });
+    } else if (error === "oauth_failed") {
+      onToast({ type: "error", message: "Falha na autenticação — tente novamente." });
+    } else if (error === "config") {
+      onToast({ type: "error", message: "Configuração incompleta — contate o suporte." });
+    }
+
+    if (connected || error) {
+      router.replace("/clientes", { scroll: false });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+}
+
+export default function ClientesPage() {
   const [accounts, setAccounts] = useState<OrbitaAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [editTarget, setEditTarget] = useState<OrbitaAccount | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrbitaAccount | null>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
-
-  // Lê ?connected=1 ou ?error=* e limpa a URL
-  useEffect(() => {
-    const connected = searchParams.get("connected");
-    const error = searchParams.get("error");
-
-    if (connected === "1") {
-      setToast({ type: "success", message: "Conta conectada com sucesso!" });
-    } else if (error === "oauth_cancelled") {
-      setToast({ type: "error", message: "Conexão cancelada pelo usuário." });
-    } else if (error === "oauth_failed") {
-      setToast({ type: "error", message: "Falha na autenticação — tente novamente." });
-    } else if (error === "config") {
-      setToast({ type: "error", message: "Configuração incompleta — contate o suporte." });
-    }
-
-    if (connected || error) {
-      // Remove query string da URL sem recarregar
-      router.replace("/clientes", { scroll: false });
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-dismiss toast após 5s
   useEffect(() => {
@@ -474,6 +478,9 @@ export default function ClientesPage() {
 
   return (
     <>
+      <Suspense fallback={null}>
+        <SearchParamsReader onToast={setToast} />
+      </Suspense>
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
       {editTarget && (
         <EditModal
