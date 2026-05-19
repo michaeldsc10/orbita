@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
       active: true,
     });
 
-    return NextResponse.redirect(new URL("/?connected=1", req.url));
+    return NextResponse.redirect(new URL("/clientes?connected=1", req.url));
   } catch (err) {
     console.error("[instagram/callback]", err);
     return NextResponse.redirect(new URL("/?error=oauth_failed", req.url));

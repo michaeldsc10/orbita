@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Sora } from "next/font/google";
 import "./globals.css";
+import { ActiveAccountProvider } from "@/context/ActiveAccountContext";
 
 const sora = Sora({
   subsets: ["latin"],
@@ -21,7 +22,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR" data-theme="light" className={sora.variable}>
-      <body>{children}</body>
+      <body>
+        <ActiveAccountProvider>{children}</ActiveAccountProvider>
+      </body>
     </html>
   );
 }
