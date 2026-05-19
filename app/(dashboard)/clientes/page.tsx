@@ -29,9 +29,18 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
+// ─── Tokens ───────────────────────────────────────────────────────────────────
+
+const T = {
+  purple: "#534AB7",
+  purpleHover: "#3C3489",
+  purpleLight: "#EEEDFE",
+  cream: "#F2F0EB",
+  border: "#E5E3F0",
+};
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// Firestore salva token_expires_at e connected_at como Timestamp (via new Date() no route.ts)
 interface OrbitaAccountRaw {
   uid: string;
   ig_user_id: string;
@@ -46,8 +55,8 @@ interface OrbitaAccountRaw {
 
 interface OrbitaAccount extends Omit<OrbitaAccountRaw, "token_expires_at" | "connected_at"> {
   id: string;
-  token_expires_at: number; // ms
-  connected_at: number;     // ms
+  token_expires_at: number;
+  connected_at: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -65,15 +74,11 @@ function initials(name: string) {
   return name.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 }
 
-function daysLeft(expiresAtMs: number) {
-  return Math.floor((expiresAtMs - Date.now()) / 86_400_000);
-}
-
-function tokenBadge(account: OrbitaAccount) {
-  const d = daysLeft(account.token_expires_at);
-  if (d < 0) return { label: "Token expirado", cls: "bg-red-100 text-red-600" };
-  if (d <= 7) return { label: `${d}d p/ expirar`, cls: "bg-amber-100 text-amber-600" };
-  return { label: `Token válido · ${d}d`, cls: "bg-emerald-100 text-emerald-600" };
+function tokenBadge(expiresAt: number) {
+  const d = Math.floor((expiresAt - Date.now()) / 86_400_000);
+  if (d < 0) return { label: "Token expirado", color: "#ef4444", bg: "#fee2e2" };
+  if (d <= 7) return { label: `${d}d p/ expirar`, color: "#d97706", bg: "#fef3c7" };
+  return { label: `Token válido · ${d}d`, color: "#059669", bg: "#d1fae5" };
 }
 
 function relDate(ms: number) {
@@ -84,32 +89,76 @@ function relDate(ms: number) {
   return `${Math.floor(d / 30)}m atrás`;
 }
 
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+type ToastType = "success" | "error";
+interface ToastData { type: ToastType; message: string; }
+
+function Toast({ toast, onClose }: { toast: ToastData; onClose: () => void }) {
+  const ok = toast.type === "success";
+  return (
+    <div style={{
+      position: "fixed", bottom: 24, right: 24, zIndex: 50,
+      display: "flex", alignItems: "center", gap: 10,
+      padding: "12px 16px", borderRadius: 16,
+      background: ok ? "#059669" : "#ef4444",
+      color: "#fff", fontSize: 14, fontWeight: 500,
+      boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+      animation: "slideUp .25s ease",
+    }}>
+      {ok ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+      {toast.message}
+      <button onClick={onClose} style={{ marginLeft: 8, opacity: 0.75, cursor: "pointer", background: "none", border: "none", color: "#fff", display: "flex" }}>
+        <X size={14} />
+      </button>
+      <style>{`@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+    </div>
+  );
+}
+
+// ─── SearchParams reader ──────────────────────────────────────────────────────
+
+function SearchParamsReader({ onToast }: { onToast: (t: ToastData) => void }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const connected = searchParams.get("connected");
+    const error = searchParams.get("error");
+    if (connected === "1") onToast({ type: "success", message: "Conta conectada com sucesso!" });
+    else if (error === "oauth_cancelled") onToast({ type: "error", message: "Conexão cancelada pelo usuário." });
+    else if (error === "oauth_failed") onToast({ type: "error", message: "Falha na autenticação — tente novamente." });
+    else if (error === "config") onToast({ type: "error", message: "Configuração incompleta — contate o suporte." });
+    if (connected || error) router.replace("/clientes", { scroll: false });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+}
+
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
 function Avatar({ account }: { account: OrbitaAccount }) {
   if (account.ig_avatar) {
     return (
-      <img
-        src={account.ig_avatar}
-        alt={account.ig_username}
-        className="w-11 h-11 rounded-full object-cover ring-2 ring-[#534AB7]/20 shrink-0"
+      <img src={account.ig_avatar} alt={account.ig_username}
+        style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: `2px solid ${T.purpleLight}`, flexShrink: 0 }}
       />
     );
   }
   return (
-    <div className="w-11 h-11 rounded-full bg-[#EEEDFE] flex items-center justify-center ring-2 ring-[#534AB7]/20 shrink-0">
-      <span className="text-sm font-semibold text-[#534AB7]">{initials(account.ig_name)}</span>
+    <div style={{
+      width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
+      background: T.purpleLight, display: "flex", alignItems: "center", justifyContent: "center",
+      border: `2px solid ${T.border}`, fontSize: 14, fontWeight: 700, color: T.purple,
+    }}>
+      {initials(account.ig_name)}
     </div>
   );
 }
 
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
 
-function EditModal({
-  account,
-  onClose,
-  onSave,
-}: {
+function EditModal({ account, onClose, onSave }: {
   account: OrbitaAccount;
   onClose: () => void;
   onSave: (id: string, name: string) => Promise<void>;
@@ -126,49 +175,43 @@ function EditModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-semibold text-neutral-900">Editar cliente</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-neutral-100 transition-colors">
-            <X size={16} className="text-neutral-500" />
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
+      <div style={{ background: "#fff", borderRadius: 20, boxShadow: "0 24px 64px rgba(0,0,0,0.15)", width: "100%", maxWidth: 380, margin: "0 16px", padding: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <span style={{ fontSize: 16, fontWeight: 600, color: "#111" }}>Editar cliente</span>
+          <button onClick={onClose} style={{ padding: 6, borderRadius: 8, border: "none", background: "none", cursor: "pointer", color: "#666", display: "flex" }}>
+            <X size={16} />
           </button>
         </div>
 
-        <div className="flex items-center gap-3 mb-5 p-3 bg-[#F2F0EB] rounded-xl">
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, background: T.cream, borderRadius: 14, marginBottom: 20 }}>
           <Avatar account={account} />
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-neutral-900 truncate">@{account.ig_username}</p>
-            <p className="text-xs text-neutral-400">ID: {account.ig_user_id}</p>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>@{account.ig_username}</p>
+            <p style={{ fontSize: 11, color: "#888", marginTop: 2 }}>ID: {account.ig_user_id}</p>
           </div>
         </div>
 
-        <label className="block text-xs font-medium text-neutral-500 mb-1.5">Nome de exibição</label>
+        <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#666", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+          Nome de exibição
+        </label>
         <input
-          autoFocus
-          type="text"
-          value={name}
+          autoFocus type="text" value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
-          className="w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7] transition-all"
+          style={{ width: "100%", border: `1.5px solid ${T.border}`, borderRadius: 12, padding: "10px 14px", fontSize: 14, color: "#111", outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
+          onFocus={(e) => (e.target.style.borderColor = T.purple)}
+          onBlur={(e) => (e.target.style.borderColor = T.border)}
         />
 
-        <div className="flex gap-2.5 mt-5">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-neutral-200 text-sm font-medium text-neutral-600 hover:bg-neutral-50 transition-colors"
-          >
+        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "11px 0", borderRadius: 50, border: `1.5px solid ${T.border}`, background: "none", fontSize: 14, fontWeight: 500, color: "#555", cursor: "pointer" }}>
             Cancelar
           </button>
-          <button
-            onClick={submit}
-            disabled={saving || !name.trim()}
-            className="flex-1 py-2.5 rounded-xl bg-[#534AB7] text-sm font-medium text-white hover:bg-[#3C3489] transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-          >
-            {saving
-              ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              : <Check size={14} />}
+          <button onClick={submit} disabled={saving || !name.trim()} style={{ flex: 1, padding: "11px 0", borderRadius: 50, border: "none", background: T.purple, fontSize: 14, fontWeight: 600, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: saving || !name.trim() ? 0.5 : 1 }}>
+            {saving ? <span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .6s linear infinite", display: "inline-block" }} /> : <Check size={14} />}
             Salvar
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </button>
         </div>
       </div>
@@ -178,11 +221,7 @@ function EditModal({
 
 // ─── Delete Modal ─────────────────────────────────────────────────────────────
 
-function DeleteModal({
-  account,
-  onClose,
-  onConfirm,
-}: {
+function DeleteModal({ account, onClose, onConfirm }: {
   account: OrbitaAccount;
   onClose: () => void;
   onConfirm: (id: string) => Promise<void>;
@@ -197,35 +236,25 @@ function DeleteModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
-        <div className="flex items-start gap-3 mb-5">
-          <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-            <AlertTriangle size={16} className="text-red-500" />
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
+      <div style={{ background: "#fff", borderRadius: 20, boxShadow: "0 24px 64px rgba(0,0,0,0.15)", width: "100%", maxWidth: 360, margin: "0 16px", padding: 24 }}>
+        <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#fee2e2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <AlertTriangle size={16} color="#ef4444" />
           </div>
           <div>
-            <p className="font-semibold text-neutral-900 mb-1">Remover cliente</p>
-            <p className="text-sm text-neutral-500">
-              <span className="font-medium text-neutral-700">@{account.ig_username}</span> será
-              desconectado e o token deletado. Ação irreversível.
+            <p style={{ fontSize: 15, fontWeight: 600, color: "#111", marginBottom: 4 }}>Remover cliente</p>
+            <p style={{ fontSize: 13, color: "#666", lineHeight: 1.5 }}>
+              <strong style={{ color: "#333" }}>@{account.ig_username}</strong> será desconectado e o token deletado. Ação irreversível.
             </p>
           </div>
         </div>
-        <div className="flex gap-2.5">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-neutral-200 text-sm font-medium text-neutral-600 hover:bg-neutral-50 transition-colors"
-          >
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "11px 0", borderRadius: 50, border: `1.5px solid ${T.border}`, background: "none", fontSize: 14, fontWeight: 500, color: "#555", cursor: "pointer" }}>
             Cancelar
           </button>
-          <button
-            onClick={submit}
-            disabled={deleting}
-            className="flex-1 py-2.5 rounded-xl bg-red-500 text-sm font-medium text-white hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-          >
-            {deleting
-              ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              : <Trash2 size={13} />}
+          <button onClick={submit} disabled={deleting} style={{ flex: 1, padding: "11px 0", borderRadius: 50, border: "none", background: "#ef4444", fontSize: 14, fontWeight: 600, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: deleting ? 0.5 : 1 }}>
+            {deleting ? <span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .6s linear infinite", display: "inline-block" }} /> : <Trash2 size={13} />}
             Remover
           </button>
         </div>
@@ -234,103 +263,117 @@ function DeleteModal({
   );
 }
 
-// ─── Card ─────────────────────────────────────────────────────────────────────
+// ─── Card Menu Item ───────────────────────────────────────────────────────────
 
-function AccountCard({
-  account,
-  onEdit,
-  onDelete,
-  onToggle,
-}: {
+function MenuItem({ icon, label, danger, onClick }: { icon: React.ReactNode; label: string; danger?: boolean; onClick: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+        border: "none", background: hover ? (danger ? "#fee2e2" : T.purpleLight) : "none",
+        color: danger ? "#ef4444" : hover ? T.purple : "#444",
+        fontSize: 13, fontWeight: 500, cursor: "pointer", textAlign: "left", transition: "background .15s, color .15s",
+      }}
+    >
+      {icon}{label}
+    </button>
+  );
+}
+
+// ─── Account Card ─────────────────────────────────────────────────────────────
+
+function AccountCard({ account, onEdit, onDelete, onToggle }: {
   account: OrbitaAccount;
   onEdit: (a: OrbitaAccount) => void;
   onDelete: (a: OrbitaAccount) => void;
   onToggle: (a: OrbitaAccount) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const badge = tokenBadge(account);
+  const [hover, setHover] = useState(false);
+  const badge = tokenBadge(account.token_expires_at);
 
   return (
-    <div className="relative bg-white border border-neutral-100 rounded-2xl p-5 hover:shadow-md hover:border-[#534AB7]/20 transition-all duration-200 group">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3 min-w-0">
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: "relative", background: "#fff",
+        border: `1.5px solid ${hover ? T.border : "#ebebeb"}`,
+        borderRadius: 20, padding: 20,
+        boxShadow: hover ? "0 8px 24px rgba(83,74,183,0.10)" : "0 1px 4px rgba(0,0,0,0.04)",
+        transition: "box-shadow .2s, border-color .2s",
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <Avatar account={account} />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-neutral-900 truncate">{account.ig_name}</p>
-            <p className="text-xs text-neutral-400 flex items-center gap-0.5 mt-0.5">
-              <AtSign size={10} />
-              {account.ig_username}
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{account.ig_name}</p>
+            <p style={{ fontSize: 12, color: "#888", display: "flex", alignItems: "center", gap: 3, marginTop: 2 }}>
+              <AtSign size={10} />{account.ig_username}
             </p>
           </div>
         </div>
 
-        <div className="relative shrink-0">
+        {/* Kebab */}
+        <div style={{ position: "relative", flexShrink: 0 }}>
           <button
             onClick={() => setOpen((v) => !v)}
-            className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-neutral-100 transition-all"
+            style={{
+              padding: 6, borderRadius: 8, border: "none", background: open ? T.purpleLight : "none",
+              cursor: "pointer", color: "#888", display: "flex",
+              opacity: hover || open ? 1 : 0, transition: "opacity .15s",
+            }}
           >
-            <MoreHorizontal size={15} className="text-neutral-500" />
+            <MoreHorizontal size={15} />
           </button>
 
           {open && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-              <div className="absolute right-0 top-8 z-20 bg-white border border-neutral-100 rounded-xl shadow-xl py-1 w-44">
-                <Link
-                  href={`/analytics/${account.ig_user_id}`}
-                  className="flex items-center gap-2.5 px-3 py-2 text-sm text-neutral-700 hover:bg-[#EEEDFE] hover:text-[#534AB7] transition-colors"
-                  onClick={() => setOpen(false)}
+              <div style={{ position: "fixed", inset: 0, zIndex: 10 }} onClick={() => setOpen(false)} />
+              <div style={{
+                position: "absolute", right: 0, top: 34, zIndex: 20,
+                background: "#fff", border: `1px solid ${T.border}`, borderRadius: 14,
+                boxShadow: "0 8px 32px rgba(0,0,0,0.12)", overflow: "hidden", minWidth: 170,
+              }}>
+                <Link href={`/analytics/${account.ig_user_id}`} onClick={() => setOpen(false)}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", fontSize: 13, fontWeight: 500, color: "#444", textDecoration: "none" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = T.purpleLight; (e.currentTarget as HTMLElement).style.color = T.purple; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; (e.currentTarget as HTMLElement).style.color = "#444"; }}
                 >
-                  <ExternalLink size={13} />
-                  Ver analytics
+                  <ExternalLink size={13} />Ver analytics
                 </Link>
-                <button
-                  onClick={() => { onEdit(account); setOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-neutral-700 hover:bg-[#EEEDFE] hover:text-[#534AB7] transition-colors"
-                >
-                  <Pencil size={13} />
-                  Editar nome
-                </button>
-                <button
-                  onClick={() => { onToggle(account); setOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-neutral-700 hover:bg-[#EEEDFE] hover:text-[#534AB7] transition-colors"
-                >
-                  {account.active ? <WifiOff size={13} /> : <Wifi size={13} />}
-                  {account.active ? "Desativar" : "Ativar"}
-                </button>
-                <div className="my-1 border-t border-neutral-100" />
-                <button
-                  onClick={() => { onDelete(account); setOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 size={13} />
-                  Remover
-                </button>
+                <MenuItem icon={<Pencil size={13} />} label="Editar nome" onClick={() => { onEdit(account); setOpen(false); }} />
+                <MenuItem icon={account.active ? <WifiOff size={13} /> : <Wifi size={13} />} label={account.active ? "Desativar" : "Ativar"} onClick={() => { onToggle(account); setOpen(false); }} />
+                <div style={{ height: 1, background: T.border, margin: "4px 0" }} />
+                <MenuItem icon={<Trash2 size={13} />} label="Remover" danger onClick={() => { onDelete(account); setOpen(false); }} />
               </div>
             </>
           )}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 mb-4">
-        <span
-          className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-            account.active ? "bg-emerald-100 text-emerald-600" : "bg-neutral-100 text-neutral-500"
-          }`}
-        >
-          <span className={`w-1.5 h-1.5 rounded-full ${account.active ? "bg-emerald-500" : "bg-neutral-400"}`} />
+      {/* Badges */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 50, background: account.active ? "#d1fae5" : "#f3f4f6", color: account.active ? "#059669" : "#6b7280" }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: account.active ? "#10b981" : "#9ca3af" }} />
           {account.active ? "Ativo" : "Inativo"}
         </span>
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${badge.cls}`}>
+        <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 50, background: badge.bg, color: badge.color }}>
           {badge.label}
         </span>
       </div>
 
-      <div className="flex items-center justify-between pt-3 border-t border-neutral-50">
-        <span className="text-xs text-neutral-400">Conectado {relDate(account.connected_at)}</span>
-        <Link
-          href={`/analytics/${account.ig_user_id}`}
-          className="text-xs font-medium text-[#534AB7] hover:text-[#3C3489] flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all"
+      {/* Footer */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12, borderTop: `1px solid #f0f0f0` }}>
+        <span style={{ fontSize: 11, color: "#aaa" }}>Conectado {relDate(account.connected_at)}</span>
+        <Link href={`/analytics/${account.ig_user_id}`}
+          style={{ fontSize: 11, fontWeight: 600, color: T.purple, display: "flex", alignItems: "center", gap: 4, textDecoration: "none", opacity: hover ? 1 : 0, transition: "opacity .15s" }}
         >
           Analytics <ExternalLink size={10} />
         </Link>
@@ -339,85 +382,30 @@ function AccountCard({
   );
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
-
-type ToastType = "success" | "error";
-
-interface ToastData {
-  type: ToastType;
-  message: string;
-}
-
-function Toast({ toast, onClose }: { toast: ToastData; onClose: () => void }) {
-  const isSuccess = toast.type === "success";
-  return (
-    <div
-      className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-lg text-sm font-medium animate-in fade-in slide-in-from-bottom-4 duration-300 ${
-        isSuccess ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
-      }`}
-    >
-      {isSuccess
-        ? <CheckCircle2 size={16} className="shrink-0" />
-        : <AlertTriangle size={16} className="shrink-0" />}
-      {toast.message}
-      <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100 transition-opacity">
-        <X size={14} />
-      </button>
-    </div>
-  );
-}
-
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function CardSkeleton() {
   return (
-    <div className="bg-white border border-neutral-100 rounded-2xl p-5 animate-pulse">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-11 h-11 bg-neutral-100 rounded-full shrink-0" />
-        <div className="flex-1">
-          <div className="h-3.5 bg-neutral-100 rounded w-3/4 mb-2" />
-          <div className="h-3 bg-neutral-100 rounded w-1/2" />
+    <div style={{ background: "#fff", border: "1.5px solid #ebebeb", borderRadius: 20, padding: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#f0f0f0", flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ height: 13, background: "#f0f0f0", borderRadius: 6, width: "70%", marginBottom: 8 }} />
+          <div style={{ height: 11, background: "#f0f0f0", borderRadius: 6, width: "45%" }} />
         </div>
       </div>
-      <div className="flex gap-1.5 mb-4">
-        <div className="h-5 bg-neutral-100 rounded-full w-12" />
-        <div className="h-5 bg-neutral-100 rounded-full w-24" />
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        <div style={{ height: 20, background: "#f0f0f0", borderRadius: 50, width: 52 }} />
+        <div style={{ height: 20, background: "#f0f0f0", borderRadius: 50, width: 100 }} />
       </div>
-      <div className="pt-3 border-t border-neutral-50">
-        <div className="h-3 bg-neutral-100 rounded w-1/3" />
+      <div style={{ paddingTop: 12, borderTop: "1px solid #f0f0f0" }}>
+        <div style={{ height: 11, background: "#f0f0f0", borderRadius: 6, width: "35%" }} />
       </div>
     </div>
   );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-
-// Componente isolado só pra ler searchParams — obrigatório para Suspense boundary
-function SearchParamsReader({ onToast }: { onToast: (t: ToastData) => void }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  useEffect(() => {
-    const connected = searchParams.get("connected");
-    const error = searchParams.get("error");
-
-    if (connected === "1") {
-      onToast({ type: "success", message: "Conta conectada com sucesso!" });
-    } else if (error === "oauth_cancelled") {
-      onToast({ type: "error", message: "Conexão cancelada pelo usuário." });
-    } else if (error === "oauth_failed") {
-      onToast({ type: "error", message: "Falha na autenticação — tente novamente." });
-    } else if (error === "config") {
-      onToast({ type: "error", message: "Configuração incompleta — contate o suporte." });
-    }
-
-    if (connected || error) {
-      router.replace("/clientes", { scroll: false });
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return null;
-}
 
 export default function ClientesPage() {
   const [accounts, setAccounts] = useState<OrbitaAccount[]>([]);
@@ -426,8 +414,8 @@ export default function ClientesPage() {
   const [editTarget, setEditTarget] = useState<OrbitaAccount | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrbitaAccount | null>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
+  const [searchFocus, setSearchFocus] = useState(false);
 
-  // Auto-dismiss toast após 5s
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 5000);
@@ -438,9 +426,7 @@ export default function ClientesPage() {
     async function load() {
       try {
         const snap = await getDocs(collection(db, "orbita_accounts"));
-        const data = snap.docs.map((d) =>
-          toAccount(d.id, d.data() as OrbitaAccountRaw)
-        );
+        const data = snap.docs.map((d) => toAccount(d.id, d.data() as OrbitaAccountRaw));
         data.sort((a, b) => b.connected_at - a.connected_at);
         setAccounts(data);
       } catch (err) {
@@ -469,10 +455,9 @@ export default function ClientesPage() {
   }
 
   const filtered = search.trim()
-    ? accounts.filter(
-        (a) =>
-          a.ig_name.toLowerCase().includes(search.toLowerCase()) ||
-          a.ig_username.toLowerCase().includes(search.toLowerCase())
+    ? accounts.filter((a) =>
+        a.ig_name.toLowerCase().includes(search.toLowerCase()) ||
+        a.ig_username.toLowerCase().includes(search.toLowerCase())
       )
     : accounts;
 
@@ -481,90 +466,101 @@ export default function ClientesPage() {
       <Suspense fallback={null}>
         <SearchParamsReader onToast={setToast} />
       </Suspense>
+
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+
       {editTarget && (
-        <EditModal
-          account={editTarget}
-          onClose={() => setEditTarget(null)}
-          onSave={handleSaveName}
-        />
+        <EditModal account={editTarget} onClose={() => setEditTarget(null)} onSave={handleSaveName} />
       )}
       {deleteTarget && (
-        <DeleteModal
-          account={deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-          onConfirm={handleDelete}
-        />
+        <DeleteModal account={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} />
       )}
 
-      <div className="p-6 max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
+      <div style={{ padding: 32, maxWidth: 1152, margin: "0 auto" }}>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32, gap: 16 }}>
           <div>
-            <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Clientes</h1>
+            <h1 style={{ fontSize: 26, fontWeight: 800, color: "#111", letterSpacing: "-0.03em", margin: 0 }}>Clientes</h1>
             {!loading && (
-              <p className="text-sm text-neutral-400 mt-0.5">
+              <p style={{ fontSize: 13, color: "#999", marginTop: 4 }}>
                 {accounts.length} conta{accounts.length !== 1 ? "s" : ""} conectada{accounts.length !== 1 ? "s" : ""}
               </p>
             )}
           </div>
-          <Link
-            href="/clientes/novo"
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#534AB7] text-white text-sm font-medium rounded-xl hover:bg-[#3C3489] transition-colors shadow-sm shadow-[#534AB7]/20"
+          <Link href="/clientes/novo" style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "11px 20px", borderRadius: 50,
+            background: T.purple, color: "#fff",
+            fontSize: 14, fontWeight: 600, textDecoration: "none",
+            boxShadow: `0 4px 16px rgba(83,74,183,0.25)`,
+            transition: "background .15s",
+          }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = T.purpleHover)}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = T.purple)}
           >
             <Plus size={15} />
             Conectar conta
           </Link>
         </div>
 
+        {/* Search */}
         {!loading && accounts.length > 0 && (
-          <div className="relative mb-6">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+          <div style={{ position: "relative", marginBottom: 24, maxWidth: 280 }}>
+            <Search size={14} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#aaa", pointerEvents: "none" }} />
             <input
               type="text"
               placeholder="Buscar por nome ou @username…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full max-w-xs pl-9 pr-4 py-2.5 text-sm border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7] bg-white transition-all"
+              onFocus={() => setSearchFocus(true)}
+              onBlur={() => setSearchFocus(false)}
+              style={{
+                width: "100%", paddingLeft: 38, paddingRight: 14, paddingTop: 10, paddingBottom: 10,
+                fontSize: 13, border: `1.5px solid ${searchFocus ? T.purple : T.border}`,
+                borderRadius: 50, outline: "none", background: "#fff",
+                color: "#111", boxSizing: "border-box", fontFamily: "inherit",
+                boxShadow: searchFocus ? `0 0 0 3px rgba(83,74,183,0.12)` : "none",
+                transition: "border-color .15s, box-shadow .15s",
+              }}
             />
           </div>
         )}
 
+        {/* Grid */}
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 16 }}>
             {Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}
           </div>
         ) : accounts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-[#EEEDFE] flex items-center justify-center mb-4">
-              <AtSign size={24} className="text-[#534AB7]" />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "80px 24px", textAlign: "center" }}>
+            <div style={{ width: 64, height: 64, borderRadius: 20, background: T.purpleLight, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+              <AtSign size={28} color={T.purple} />
             </div>
-            <p className="font-semibold text-neutral-900 mb-1">Nenhum cliente conectado</p>
-            <p className="text-sm text-neutral-400 mb-6 max-w-xs">
-              Conecte a primeira conta Instagram para começar.
+            <p style={{ fontSize: 16, fontWeight: 700, color: "#111", marginBottom: 6 }}>Nenhum cliente conectado</p>
+            <p style={{ fontSize: 13, color: "#999", marginBottom: 24, maxWidth: 280, lineHeight: 1.6 }}>
+              Conecte a primeira conta Instagram para começar a gerenciar clientes.
             </p>
-            <Link
-              href="/clientes/novo"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#534AB7] text-white text-sm font-medium rounded-xl hover:bg-[#3C3489] transition-colors"
-            >
+            <Link href="/clientes/novo" style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "11px 24px", borderRadius: 50,
+              background: T.purple, color: "#fff",
+              fontSize: 14, fontWeight: 600, textDecoration: "none",
+              boxShadow: `0 4px 16px rgba(83,74,183,0.25)`,
+            }}>
               <Plus size={15} />
               Conectar conta
             </Link>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Search size={20} className="text-neutral-300 mb-2" />
-            <p className="text-sm text-neutral-400">Sem resultados para &ldquo;{search}&rdquo;</p>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "64px 24px", textAlign: "center" }}>
+            <Search size={20} color="#ccc" style={{ marginBottom: 10 }} />
+            <p style={{ fontSize: 13, color: "#999" }}>Sem resultados para &ldquo;{search}&rdquo;</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 16 }}>
             {filtered.map((a) => (
-              <AccountCard
-                key={a.id}
-                account={a}
-                onEdit={setEditTarget}
-                onDelete={setDeleteTarget}
-                onToggle={handleToggle}
-              />
+              <AccountCard key={a.id} account={a} onEdit={setEditTarget} onDelete={setDeleteTarget} onToggle={handleToggle} />
             ))}
           </div>
         )}
